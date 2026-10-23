@@ -4,7 +4,10 @@ import pandas as pd
 import streamlit as st
 
 st.set_page_config(page_title="Gambling.com Organic + AI Visibility", layout="wide")
-D = json.loads((Path(__file__).parent / "data" / "data.json").read_text())
+ALL = json.loads((Path(__file__).parent / "data" / "data.json").read_text())
+MKT = st.radio("Market", list(ALL["markets"]), horizontal=True)
+D = ALL["markets"][MKT]
+D["generated"] = ALL["generated"]
 ME, DOMS, K = D["me"], D["doms"], D["K"]
 ENG = {"chat_gpt": "ChatGPT", "gemini": "Gemini", "perplexity": "Perplexity"}
 CTR = {1: .3, 2: .16, 3: .1, 4: .07, 5: .05, 6: .04, 7: .03, 8: .025, 9: .02, 10: .018}
@@ -28,8 +31,8 @@ tot_sov = sum(M[d][0]["sov"] for d in DOMS) or 1
 sov_pct = {d: round(100 * M[d][0]["sov"] / tot_sov, 1) for d in DOMS}
 ai_rate = {b: round(100 * sum(D["stat"][e][b]["m"] for e in D["engines"]) / sum(D["n"].values())) for b in DOMS}
 
-st.title("Gambling.com: Organic + AI Visibility (casino)")
-st.caption(f"Snapshot {D['generated']}. AccuRanker (Group SEO 'UK BOFU', UK mobile), DataForSEO, live AI prompts.")
+st.title(f"Gambling.com {MKT}: Organic + AI Visibility (casino)")
+st.caption(f"Snapshot {D['generated']}. AccuRanker (Group SEO BOFU domain for the market, mobile), DataForSEO, live AI prompts.")
 tabs = st.tabs(["Overview", "Keywords", "Tracked keywords", "Share of voice", "AI visibility"])
 
 with tabs[0]:
@@ -49,7 +52,7 @@ with tabs[0]:
     b.subheader("AI mention rate %"); b.bar_chart(pd.Series(ai_rate))
 
 with tabs[1]:
-    st.caption("DataForSEO top-10 keywords on /uk and /uk/online-casinos/ URLs only.")
+    st.caption("DataForSEO top-10 keywords on the market root and /online-casinos/ URLs only.")
     df = pd.DataFrame(D["kw"], columns=["Keyword", "Pos", "Volume", "CPC", "KD", "Intent", "URL", "Est. traffic"])
     c = st.columns(4)
     inc = c[0].text_input("Include words (comma separated)")
@@ -89,15 +92,15 @@ with tabs[2]:
         a, b = rank(k, sel, 0), rank(k, sel, i)
         if not a and not b: continue
         ch = (b or 101) - (a or 101)
-        if ch: mv.append({"Keyword": k["k"], "Volume": k["v"], "Was": b or ">100", "Now": a or ">100", "Move": ch})
+        if ch: mv.append({"Keyword": k["k"], "Volume": k["v"], "Was": str(b or ">100"), "Now": str(a or ">100"), "Move": ch})
     mdf = pd.DataFrame(mv)
     a, b = st.columns(2)
     if len(mdf):
         a.markdown("**Top 10 winners**"); a.dataframe(mdf[mdf.Move > 0].sort_values(["Move", "Volume"], ascending=False).head(10), hide_index=True, width="stretch")
         b.markdown("**Top 10 losers**"); b.dataframe(mdf[mdf.Move < 0].sort_values(["Move", "Volume"], ascending=[True, False]).head(10), hide_index=True, width="stretch")
-    st.subheader('Top 50 "UK Casino" keywords (by volume)')
+    st.subheader(f'Top 50 "{MKT} Casino" keywords (by volume)')
     t50 = []
-    for k in sorted([k for k in K if k["t"] == "UK Casino"], key=lambda k: -k["v"])[:50]:
+    for k in sorted([k for k in K if k["t"] == f"{MKT} Casino"], key=lambda k: -k["v"])[:50]:
         r = {"Keyword": k["k"], "Volume": k["v"], "Gambling.com": k["r"][0],
              "7d": (k["r"][1] - k["r"][0]) if k["r"][0] and k["r"][1] else None, "URL": k["lp"]}
         for d in DOMS[1:]: r[d] = rank(k, d, 0)
