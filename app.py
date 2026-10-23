@@ -127,7 +127,7 @@ with tabs[4]:
         col.metric(f"{ENG[e]}: mention / citation", f"{round(100*s['m']/n)}% / {round(100*s['c']/n)}%", f"avg pos {s['avgpos']}", delta_color="off")
     for title, key in [("Mention rate by engine", "m"), ("Citation rate (linked as source)", "c")]:
         st.subheader(title)
-        st.dataframe(pd.DataFrame({ENG[e]: {b: round(100 * D["stat"][e][b][key] / D["n"][e]) for b in DOMS} for e in D["engines"]}).style.format("{}%").background_gradient(cmap="Blues"), width="stretch")
+        st.dataframe(pd.DataFrame({ENG[e]: {b: round(100 * D["stat"][e][b][key] / D["n"][e]) for b in DOMS} for e in D["engines"]}).style.format("{}%"), width="stretch")
     st.subheader("Most cited sources"); st.bar_chart(pd.Series(dict(D["src"])))
     st.subheader("Prompt tracker")
     st.dataframe(pd.DataFrame([{"Prompt": p["p"], "Engine": ENG[p["e"]], "Mentioned": ", ".join(p["ment"]), "Cited": ", ".join(p["cit"])} for p in D["pp"]]), hide_index=True, width="stretch")
