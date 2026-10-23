@@ -168,6 +168,37 @@ with tabs[5]:
     st.subheader("AI prompts where a competitor is named and gambling.com is not")
     miss = [{"Prompt": p["p"], "Engine": ENG[p["e"]], "Named instead": ", ".join(p["ment"][:4])} for p in D["pp"] if ME not in p["ment"] and p["ment"]]
     st.dataframe(pd.DataFrame(miss[:20]), hide_index=True, width="stretch")
+    st.subheader("What competitors do well that gambling.com does not")
+    cmp_rows = []
+    for d in DOMS[1:]:
+        lead = [k for k in K if (a := rank(k, d, 0)) and a <= 5 and (not k["r"][0] or k["r"][0] > 10)]
+        ai_m = sum(D["stat"][e][d]["m"] for e in D["engines"]); ai_c = sum(D["stat"][e][d]["c"] for e in D["engines"])
+        ai_me_c = sum(D["stat"][e][ME]["c"] for e in D["engines"])
+        cmp_rows.append({"Competitor": d, "Top-5 where we are outside top 10": len(lead),
+                         "Search volume of those": sum(k["v"] for k in lead),
+                         "Their top 3 vs ours": f"{M[d][0]['t3']} vs {M[ME][0]['t3']}",
+                         "AI mention rate": f"{ai_rate[d]}% vs {ai_rate[ME]}%",
+                         "AI citations": f"{ai_c} vs {ai_me_c}"})
+    st.dataframe(pd.DataFrame(cmp_rows).sort_values("Search volume of those", ascending=False), hide_index=True, width="stretch")
+    THEMES = {"Free spins": ["free spin"], "No deposit": ["no deposit"], "Welcome / sign-up bonus": ["welcome", "sign up", "signup", "bonus"],
+              "Slots": ["slot"], "Live / table games": ["live", "blackjack", "roulette", "baccarat", "poker"], "New casinos": ["new casino", "new online"],
+              "Payment methods": ["paypal", "visa", "apple pay", "trustly", "skrill", "neteller", "paysafe", "pay by", "bank transfer", "crypto", "bitcoin", "interac", "upi"],
+              "Real money": ["real money", "pay out", "payout", "fast with", "withdraw"], "Mobile / app": ["app", "mobile"],
+              "Brand / review": ["review", "casino login", "login"], "Best / top lists": ["best", "top "]}
+    trows = []
+    for th, subs in THEMES.items():
+        ks = [k for k in K if any(x in k["k"].lower() for x in subs)]
+        if len(ks) < 3: continue
+        mine = sum(1 for k in ks if k["r"][0] and k["r"][0] <= 5)
+        best = max(DOMS[1:], key=lambda d: sum(1 for k in ks if (rank(k, d, 0) or 99) <= 5))
+        bc = sum(1 for k in ks if (rank(k, best, 0) or 99) <= 5)
+        trows.append({"Topic": th, "Keywords": len(ks), "Gambling.com top 5": mine, "Strongest competitor": best, "Their top 5": bc, "Gap": bc - mine})
+    st.markdown("**Topics where a competitor holds more top-5 rankings than gambling.com**")
+    tdf = pd.DataFrame(trows)
+    if len(tdf): st.dataframe(tdf.sort_values("Gap", ascending=False), hide_index=True, width="stretch")
+    ext = [(d, n) for d, n in D["src"] if d != ME and "vertexai" not in d][:8]
+    st.markdown("**Sources AI engines cite most (excluding gambling.com):** " + ", ".join(f"{d} ({n})" for d, n in ext))
+    st.caption("Ranks: AccuRanker (casino.org from a live check, top 30 only). Topics are matched on keyword wording, so one keyword can sit in several topics.")
     st.subheader("Suggested next steps")
     top_near = ", ".join(k["k"] for k in near[:3])
     st.markdown(
