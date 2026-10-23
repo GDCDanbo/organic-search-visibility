@@ -29,7 +29,9 @@ def metrics(d, i):
 M = {d: (metrics(d, 0), metrics(d, 1)) for d in DOMS}
 tot_sov = sum(M[d][0]["sov"] for d in DOMS) or 1
 sov_pct = {d: round(100 * M[d][0]["sov"] / tot_sov, 1) for d in DOMS}
-ai_rate = {b: round(100 * sum(D["stat"][e][b]["m"] for e in D["engines"]) / sum(D["n"].values())) for b in DOMS}
+NO_AI = not D["engines"]
+ai_rate = {b: (0 if NO_AI else round(100 * sum(D["stat"][e][b]["m"] for e in D["engines"]) / sum(D["n"].values()))) for b in DOMS}
+AIS = "n/a" if NO_AI else None
 
 st.title(f"Gambling.com {MKT}: Organic + AI Visibility (casino)")
 st.caption(f"Snapshot {D['generated']}. AccuRanker (Group SEO BOFU domain for the market, mobile), DataForSEO, live AI prompts.")
@@ -41,24 +43,24 @@ with tabs[0]:
     c[0].metric("Casino keywords tracked", len(K), f"{m['n']} ranking")
     c[1].metric("Top 3", m["t3"], m["t3"] - w["t3"])
     c[2].metric("Top 10", m["t10"], m["t10"] - w["t10"])
-    c[3].metric("Avg rank", round(m["avg"], 1), round(m["avg"] - w["avg"], 1), delta_color="inverse")
-    c[4].metric("AI mention rate", f"{ai_rate[ME]}%")
+    c[3].metric("Avg rank", round(m["avg"], 1) if m["avg"] else "-", round(m["avg"] - w["avg"], 1) if m["avg"] and w["avg"] else None, delta_color="inverse")
+    c[4].metric("AI mention rate", "pending" if NO_AI else f"{ai_rate[ME]}%")
     st.subheader("Visibility trend, 30 days (volume x CTR)")
     tr = pd.DataFrame({d: {x[0]: x[2] for x in v} for d, v in D["trend"].items()})
     st.line_chart(tr)
-    st.caption("casino.org has no daily history (not in AccuRanker's competitor set).")
+    st.caption("Competitors are those tracked in AccuRanker for this market. casino.org (UK, IE, CA, NZ, IN only) has no daily history where it is not tracked.")
     a, b = st.columns(2)
     a.subheader("Google SoV %"); a.bar_chart(pd.Series(sov_pct))
-    b.subheader("AI mention rate %"); b.bar_chart(pd.Series(ai_rate))
+    if not NO_AI: b.subheader("AI mention rate %"); b.bar_chart(pd.Series(ai_rate))
 
 with tabs[1]:
-    st.caption("DataForSEO top-10 keywords on the market root and /online-casinos/ URLs only.")
+    st.caption("Top-10 keywords from AccuRanker casino keywords (CPC, KD and intent need DataForSEO)." if NO_AI else "DataForSEO top-10 keywords on the market root and /online-casinos/ URLs only.")
     df = pd.DataFrame(D["kw"], columns=["Keyword", "Pos", "Volume", "CPC", "KD", "Intent", "URL", "Est. traffic"])
     c = st.columns(4)
     inc = c[0].text_input("Include words (comma separated)")
     exc = c[1].text_input("Exclude words")
     mp = c[2].selectbox("Position", [10, 3], format_func=lambda x: f"Top {x}")
-    it = c[3].selectbox("Intent", ["All"] + sorted(df["Intent"].dropna().unique()))
+    it = c[3].selectbox("Intent", ["All"] + sorted(df["Intent"].dropna().unique())) if df["Intent"].notna().any() else "All"
     f = df[df["Pos"] <= mp]
     if it != "All": f = f[f["Intent"] == it]
     iw = [x.strip().lower() for x in inc.split(",") if x.strip()]
@@ -100,7 +102,8 @@ with tabs[2]:
         b.markdown("**Top 10 losers**"); b.dataframe(mdf[mdf.Move < 0].sort_values(["Move", "Volume"], ascending=[True, False]).head(10), hide_index=True, width="stretch")
     st.subheader(f'Top 50 "{MKT} Casino" keywords (by volume)')
     t50 = []
-    for k in sorted([k for k in K if k["t"] == f"{MKT} Casino"], key=lambda k: -k["v"])[:50]:
+    pool = [k for k in K if k["t"] == f"{MKT} Casino"] or K
+    for k in sorted(pool, key=lambda k: -k["v"])[:50]:
         r = {"Keyword": k["k"], "Volume": k["v"], "Gambling.com": k["r"][0],
              "7d": (k["r"][1] - k["r"][0]) if k["r"][0] and k["r"][1] else None, "URL": k["lp"]}
         for d in DOMS[1:]: r[d] = rank(k, d, 0)
@@ -118,33 +121,37 @@ with tabs[3]:
         if k["r"][0] and k["r"][0] <= 10: continue
         who = [f"{d} #{rank(k, d, 0)}" for d in DOMS[1:] if (rank(k, d, 0) or 99) <= 5]
         if who: gaps.append({"Keyword": k["k"], "Volume": k["v"], "Who ranks top 5": ", ".join(who), "Gambling.com": k["r"][0]})
-    st.dataframe(pd.DataFrame(gaps).sort_values("Volume", ascending=False).head(60), hide_index=True, width="stretch")
+    st.dataframe(pd.DataFrame(gaps, columns=["Keyword", "Volume", "Who ranks top 5", "Gambling.com"]).sort_values("Volume", ascending=False).head(60), hide_index=True, width="stretch")
 
 with tabs[4]:
-    c = st.columns(3)
-    for col, e in zip(c, D["engines"]):
-        s, n = D["stat"][e][ME], D["n"][e]
-        col.metric(f"{ENG[e]}: mention / citation", f"{round(100*s['m']/n)}% / {round(100*s['c']/n)}%", f"avg pos {s['avgpos']}", delta_color="off")
-    for title, key in [("Mention rate by engine", "m"), ("Citation rate (linked as source)", "c")]:
-        st.subheader(title)
-        st.dataframe(pd.DataFrame({ENG[e]: {b: round(100 * D["stat"][e][b][key] / D["n"][e]) for b in DOMS} for e in D["engines"]}).style.format("{}%"), width="stretch")
-    st.subheader("Most cited sources"); st.bar_chart(pd.Series(dict(D["src"])))
-    st.subheader("Prompt tracker")
-    st.dataframe(pd.DataFrame([{"Prompt": p["p"], "Engine": ENG[p["e"]], "Mentioned": ", ".join(p["ment"]), "Cited": ", ".join(p["cit"])} for p in D["pp"]]), hide_index=True, width="stretch")
-    st.caption("25 prompts x 3 engines, run once. Gemini citations are redirect URLs so its citation rate reads 0%. AI Overviews excluded (suppressed for UK gambling queries).")
+    if NO_AI:
+        st.info("AI visibility for this market is pending: it needs a DataForSEO top-up. UK, IE, CA, NZ and IN are complete.")
+    else:
+        c = st.columns(3)
+        for col, e in zip(c, D["engines"]):
+            s, n = D["stat"][e][ME], D["n"][e]
+            col.metric(f"{ENG[e]}: mention / citation", f"{round(100*s['m']/n)}% / {round(100*s['c']/n)}%", f"avg pos {s['avgpos']}", delta_color="off")
+        for title, key in [("Mention rate by engine", "m"), ("Citation rate (linked as source)", "c")]:
+            st.subheader(title)
+            st.dataframe(pd.DataFrame({ENG[e]: {b: round(100 * D["stat"][e][b][key] / D["n"][e]) for b in DOMS} for e in D["engines"]}).style.format("{}%"), width="stretch")
+        st.subheader("Most cited sources"); st.bar_chart(pd.Series(dict(D["src"])))
+        st.subheader("Prompt tracker")
+        st.dataframe(pd.DataFrame([{"Prompt": p["p"], "Engine": ENG[p["e"]], "Mentioned": ", ".join(p["ment"]), "Cited": ", ".join(p["cit"])} for p in D["pp"]]), hide_index=True, width="stretch")
+        st.caption("25 prompts x 3 engines, run once. Gemini citations are redirect URLs so its citation rate reads 0%. AI Overviews excluded (suppressed for UK gambling queries).")
 
 with tabs[5]:
     m, w = M[ME]
     order_v = sorted(DOMS, key=lambda d: -M[d][0]["sov"])
     pos = order_v.index(ME) + 1
-    leader = order_v[0] if order_v[0] != ME else order_v[1]
+    leader = (order_v[0] if order_v[0] != ME else (order_v[1] if len(order_v) > 1 else ME))
     ahead = {d: sum(1 for k in K if (a := rank(k, d, 0)) and (not k["r"][0] or a < k["r"][0])) for d in DOMS if d != ME}
-    worst = max(ahead, key=ahead.get)
+    worst = max(ahead, key=ahead.get, default="competitors")
+    ahead.setdefault("competitors", 0)
     up = sum(1 for k in K if k["r"][0] and k["r"][1] and k["r"][0] < k["r"][1])
     dn = sum(1 for k in K if k["r"][0] and k["r"][1] and k["r"][0] > k["r"][1])
     unr = sum(1 for k in K if not k["r"][0])
     near = sorted([k for k in K if k["r"][0] and 4 <= k["r"][0] <= 20], key=lambda k: -k["v"])
-    ai_best = max((d for d in DOMS if d != ME), key=lambda d: ai_rate[d])
+    ai_best = max((d for d in DOMS if d != ME), key=lambda d: ai_rate[d], default=None)
     st.subheader(f"Key takeaways: {MKT} casino")
     st.markdown(
         f"- **Organic position:** gambling.com ranks {pos} of {len(DOMS)} on Google visibility for tracked casino keywords (share of voice {sov_pct[ME]}%). "
@@ -152,8 +159,8 @@ with tabs[5]:
         f"- **Rankings:** {m['t3']} keywords in the top 3 and {m['t10']} in the top 10 out of {len(K)} tracked; average rank {round(m['avg'], 1)}. "
         f"Over 7 days {up} keywords improved and {dn} dropped; {unr} are not ranking in the top 100.\n"
         f"- **Toughest competitor:** {worst} outranks gambling.com on {ahead[worst]} tracked keywords.\n"
-        f"- **AI visibility:** gambling.com is mentioned in {ai_rate[ME]}% of AI answers across ChatGPT, Gemini and Perplexity. "
-        f"The best competitor, {ai_best}, is at {ai_rate[ai_best]}%.")
+        + ("" if NO_AI else f"\n- **AI visibility:** gambling.com is mentioned in {ai_rate[ME]}% of AI answers across ChatGPT, Gemini and Perplexity. "
+        f"The best competitor, {ai_best}, is at {ai_rate[ai_best]}%."))
     st.subheader("Biggest opportunities: ranking 4-20, highest volume")
     st.dataframe(pd.DataFrame([{"Keyword": k["k"], "Volume": k["v"], "Rank": k["r"][0], "URL": k["lp"],
                                 "Best competitor": min(((rank(k, d, 0), d) for d in DOMS[1:] if rank(k, d, 0)), default=(None, ""))[1]}
@@ -165,9 +172,9 @@ with tabs[5]:
         who = sorted((rank(k, d, 0), d) for d in DOMS[1:] if rank(k, d, 0) and rank(k, d, 0) <= 5)
         if who: rows.append({"Keyword": k["k"], "Volume": k["v"], "Gambling.com": k["r"][0], "Leading": ", ".join(f"{d} #{r}" for r, d in who[:3])})
     st.dataframe(pd.DataFrame(rows[:15]), hide_index=True, width="stretch")
-    st.subheader("AI prompts where a competitor is named and gambling.com is not")
+    if not NO_AI: st.subheader("AI prompts where a competitor is named and gambling.com is not")
     miss = [{"Prompt": p["p"], "Engine": ENG[p["e"]], "Named instead": ", ".join(p["ment"][:4])} for p in D["pp"] if ME not in p["ment"] and p["ment"]]
-    st.dataframe(pd.DataFrame(miss[:20]), hide_index=True, width="stretch")
+    if not NO_AI: st.dataframe(pd.DataFrame(miss[:20]), hide_index=True, width="stretch")
     st.subheader("What competitors do well that gambling.com does not")
     cmp_rows = []
     for d in DOMS[1:]:
@@ -177,9 +184,12 @@ with tabs[5]:
         cmp_rows.append({"Competitor": d, "Top-5 where we are outside top 10": len(lead),
                          "Search volume of those": sum(k["v"] for k in lead),
                          "Their top 3 vs ours": f"{M[d][0]['t3']} vs {M[ME][0]['t3']}",
-                         "AI mention rate": f"{ai_rate[d]}% vs {ai_rate[ME]}%",
-                         "AI citations": f"{ai_c} vs {ai_me_c}"})
-    st.dataframe(pd.DataFrame(cmp_rows).sort_values("Search volume of those", ascending=False), hide_index=True, width="stretch")
+                         "AI mention rate": "pending" if NO_AI else f"{ai_rate[d]}% vs {ai_rate[ME]}%",
+                         "AI citations": "pending" if NO_AI else f"{ai_c} vs {ai_me_c}"})
+    if cmp_rows:
+        st.dataframe(pd.DataFrame(cmp_rows).sort_values("Search volume of those", ascending=False), hide_index=True, width="stretch")
+    else:
+        st.info("No competitors are tracked in AccuRanker for this market, so there is no comparison yet. Add competitors in AccuRanker to enable it.")
     THEMES = {"Free spins": ["free spin"], "No deposit": ["no deposit"], "Welcome / sign-up bonus": ["welcome", "sign up", "signup", "bonus"],
               "Slots": ["slot"], "Live / table games": ["live", "blackjack", "roulette", "baccarat", "poker"], "New casinos": ["new casino", "new online"],
               "Payment methods": ["paypal", "visa", "apple pay", "trustly", "skrill", "neteller", "paysafe", "pay by", "bank transfer", "crypto", "bitcoin", "interac", "upi"],
@@ -188,7 +198,7 @@ with tabs[5]:
     trows = []
     for th, subs in THEMES.items():
         ks = [k for k in K if any(x in k["k"].lower() for x in subs)]
-        if len(ks) < 3: continue
+        if len(ks) < 3 or len(DOMS) < 2: continue
         mine = sum(1 for k in ks if k["r"][0] and k["r"][0] <= 5)
         best = max(DOMS[1:], key=lambda d: sum(1 for k in ks if (rank(k, d, 0) or 99) <= 5))
         bc = sum(1 for k in ks if (rank(k, best, 0) or 99) <= 5)
@@ -198,11 +208,11 @@ with tabs[5]:
     if len(tdf): st.dataframe(tdf.sort_values("Gap", ascending=False), hide_index=True, width="stretch")
     ext = [(d, n) for d, n in D["src"] if d != ME and "vertexai" not in d][:8]
     st.markdown("**Sources AI engines cite most (excluding gambling.com):** " + ", ".join(f"{d} ({n})" for d, n in ext))
-    st.caption("Ranks: AccuRanker (casino.org from a live check, top 30 only). Topics are matched on keyword wording, so one keyword can sit in several topics.")
+    st.caption("Ranks: AccuRanker (UK/IE/CA/NZ/IN: casino.org from a live check, top 30 only). Topic matching uses English wording, so it finds less in non-English markets. Topics are matched on keyword wording, so one keyword can sit in several topics.")
     st.subheader("Suggested next steps")
     top_near = ", ".join(k["k"] for k in near[:3])
     st.markdown(
         f"1. Push the near-page-1 keywords first ({top_near}): small on-page and internal-link gains move these fastest.\n"
         f"2. Review pages where {worst} leads and compare content depth, offers and freshness.\n"
-        f"3. Close AI gaps: add clear brand-product-customer statements and FAQ answers on pages behind the prompts above, and check which sources the engines cite (AI visibility tab).\n"
-        f"4. Re-pull the data regularly: this is a 23 Oct snapshot, and AccuRanker and live SERPs can disagree.")
+        + ("" if NO_AI else "3. Close AI gaps: add clear brand-product-customer statements and FAQ answers on pages behind the prompts above, and check which sources the engines cite (AI visibility tab).\n")
+        + f"4. Re-pull the data regularly: this is a 23 Oct snapshot, and AccuRanker and live SERPs can disagree.")
