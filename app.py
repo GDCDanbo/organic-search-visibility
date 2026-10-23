@@ -33,7 +33,7 @@ ai_rate = {b: round(100 * sum(D["stat"][e][b]["m"] for e in D["engines"]) / sum(
 
 st.title(f"Gambling.com {MKT}: Organic + AI Visibility (casino)")
 st.caption(f"Snapshot {D['generated']}. AccuRanker (Group SEO BOFU domain for the market, mobile), DataForSEO, live AI prompts.")
-tabs = st.tabs(["Overview", "Keywords", "Tracked keywords", "Share of voice", "AI visibility"])
+tabs = st.tabs(["Overview", "Keywords", "Tracked keywords", "Share of voice", "AI visibility", "Insights"])
 
 with tabs[0]:
     m, w = M[ME]
@@ -132,3 +132,46 @@ with tabs[4]:
     st.subheader("Prompt tracker")
     st.dataframe(pd.DataFrame([{"Prompt": p["p"], "Engine": ENG[p["e"]], "Mentioned": ", ".join(p["ment"]), "Cited": ", ".join(p["cit"])} for p in D["pp"]]), hide_index=True, width="stretch")
     st.caption("25 prompts x 3 engines, run once. Gemini citations are redirect URLs so its citation rate reads 0%. AI Overviews excluded (suppressed for UK gambling queries).")
+
+with tabs[5]:
+    m, w = M[ME]
+    order_v = sorted(DOMS, key=lambda d: -M[d][0]["sov"])
+    pos = order_v.index(ME) + 1
+    leader = order_v[0] if order_v[0] != ME else order_v[1]
+    ahead = {d: sum(1 for k in K if (a := rank(k, d, 0)) and (not k["r"][0] or a < k["r"][0])) for d in DOMS if d != ME}
+    worst = max(ahead, key=ahead.get)
+    up = sum(1 for k in K if k["r"][0] and k["r"][1] and k["r"][0] < k["r"][1])
+    dn = sum(1 for k in K if k["r"][0] and k["r"][1] and k["r"][0] > k["r"][1])
+    unr = sum(1 for k in K if not k["r"][0])
+    near = sorted([k for k in K if k["r"][0] and 4 <= k["r"][0] <= 20], key=lambda k: -k["v"])
+    ai_best = max((d for d in DOMS if d != ME), key=lambda d: ai_rate[d])
+    st.subheader(f"Key takeaways: {MKT} casino")
+    st.markdown(
+        f"- **Organic position:** gambling.com ranks {pos} of {len(DOMS)} on Google visibility for tracked casino keywords (share of voice {sov_pct[ME]}%). "
+        f"{leader} is ahead on {sov_pct[leader]}%.\n"
+        f"- **Rankings:** {m['t3']} keywords in the top 3 and {m['t10']} in the top 10 out of {len(K)} tracked; average rank {round(m['avg'], 1)}. "
+        f"Over 7 days {up} keywords improved and {dn} dropped; {unr} are not ranking in the top 100.\n"
+        f"- **Toughest competitor:** {worst} outranks gambling.com on {ahead[worst]} tracked keywords.\n"
+        f"- **AI visibility:** gambling.com is mentioned in {ai_rate[ME]}% of AI answers across ChatGPT, Gemini and Perplexity. "
+        f"The best competitor, {ai_best}, is at {ai_rate[ai_best]}%.")
+    st.subheader("Biggest opportunities: ranking 4-20, highest volume")
+    st.dataframe(pd.DataFrame([{"Keyword": k["k"], "Volume": k["v"], "Rank": k["r"][0], "URL": k["lp"],
+                                "Best competitor": min(((rank(k, d, 0), d) for d in DOMS[1:] if rank(k, d, 0)), default=(None, ""))[1]}
+                               for k in near[:15]]), hide_index=True, width="stretch")
+    st.subheader("Where competitors beat us on volume")
+    beat = sorted([k for k in K if not k["r"][0] or k["r"][0] > 10], key=lambda k: -k["v"])
+    rows = []
+    for k in beat:
+        who = sorted((rank(k, d, 0), d) for d in DOMS[1:] if rank(k, d, 0) and rank(k, d, 0) <= 5)
+        if who: rows.append({"Keyword": k["k"], "Volume": k["v"], "Gambling.com": k["r"][0], "Leading": ", ".join(f"{d} #{r}" for r, d in who[:3])})
+    st.dataframe(pd.DataFrame(rows[:15]), hide_index=True, width="stretch")
+    st.subheader("AI prompts where a competitor is named and gambling.com is not")
+    miss = [{"Prompt": p["p"], "Engine": ENG[p["e"]], "Named instead": ", ".join(p["ment"][:4])} for p in D["pp"] if ME not in p["ment"] and p["ment"]]
+    st.dataframe(pd.DataFrame(miss[:20]), hide_index=True, width="stretch")
+    st.subheader("Suggested next steps")
+    top_near = ", ".join(k["k"] for k in near[:3])
+    st.markdown(
+        f"1. Push the near-page-1 keywords first ({top_near}): small on-page and internal-link gains move these fastest.\n"
+        f"2. Review pages where {worst} leads and compare content depth, offers and freshness.\n"
+        f"3. Close AI gaps: add clear brand-product-customer statements and FAQ answers on pages behind the prompts above, and check which sources the engines cite (AI visibility tab).\n"
+        f"4. Re-pull the data regularly: this is a 23 Oct snapshot, and AccuRanker and live SERPs can disagree.")
